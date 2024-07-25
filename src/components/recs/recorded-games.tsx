@@ -1,25 +1,22 @@
 "use client";
 
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { SpinnerWithText } from "../spinner";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { useToast } from "../ui/use-toast";
 import { Input } from "../ui/input";
 import RecTile from "./rec-tile";
-import { getMythRecs } from "@/server/controllers/mongo-controller";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+// import { getMythRecs } from "@/server/controllers/mongo-controller";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InfoIcon } from "lucide-react";
 
+
 export default function RecordedGames() {
-  const [recs, setRecs] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isFetching, setIsFetching] = useState<boolean>(false);
-  const [page, setPage] = useState<number>(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [recs, setRecs] = useState<any[]>([]);
   const [recFile, setRecFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const { toast } = useToast();
@@ -81,52 +78,38 @@ export default function RecordedGames() {
     }
   }
 
-  async function fetchRecs(): Promise<void> {
-    if (isFetching) return;
-    setIsFetching(true);
-    console.log("fetching recs");
-    try {
-      // load next page of recs
-      const mythRecs = await getMythRecs(page);
-      if (mythRecs.length === 0) {
-        console.log("no more recs");
-        setIsLoading(false);
-        setIsFetching(false);
-        setPage(-1);
-        return;
-      }
-      setRecs((recs) => [...recs, ...mythRecs]);
-      setIsLoading(false);
-      setIsFetching(false);
-    } catch (err) {
-      console.error("Error fetching recs", err);
-      setIsLoading(false);
-      setIsFetching(false);
-      toast({
-        title: "Error Fetching Recs",
-        description: "Try again later",
-      });
-    }
-  }
+  const fetchRecs = useCallback(async (pageNum: number) => {
+    const mythRecs = await getMythRecsMock(pageNum);
 
-  useEffect(() => {
-    fetchRecs();
+    if (!mythRecs.length) {
+      setHasMore(false);
+      setIsLoading(false);
+      return;
+    }
+
+    setRecs((prevRecs) => [...prevRecs, ...mythRecs]);
+    setIsLoading(false);
   }, []);
 
+  const handleScroll = useCallback(async () => {
+    if (isLoading || !hasMore) return;
+    const scrollPosition = window.scrollY + window.innerHeight;
+    const pageHeight = document.documentElement.scrollHeight;
+    if (pageHeight - scrollPosition <= 300) {
+      setIsLoading(true);
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      await fetchRecs(nextPage);
+      console.log("loaded page", nextPage);
+    }
+  }, [isLoading, currentPage, fetchRecs, hasMore]);
+
   useEffect(() => {
-    const handleScroll = () => {
-      const scrollPosition = window.scrollY + window.innerHeight;
-      const pageHeight = document.documentElement.scrollHeight;
-      if (pageHeight - scrollPosition <= 300 && page !== -1) {
-        if (isLoading) return;
-        setIsLoading(true);
-        fetchRecs();
-        setPage((prevPage) => prevPage + 1);
-      }
-    };
+    fetchRecs(0);
     window.addEventListener("scroll", handleScroll);
+
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [setPage, isLoading]);
+  }, [handleScroll, fetchRecs]);
 
   return (
     <Card className="p-4">
@@ -168,28 +151,78 @@ export default function RecordedGames() {
         </Button>
       </div>
       <div className="mt-4">
-        {isLoading ? (
-          <SpinnerWithText text={"Loading recorded games..."} />
-        ) : (
           <div className="flex flex-row flex-wrap justify-center">
-            {recs?.map(
-              (rec) => (
-                console.log("red", rec),
-                (
-                  <Card
-                    key={rec.gameGuid}
-                    className="bg-secondary rounded-lg m-1 p-2 flex w-fit"
-                  >
-                    <div>
-                      <RecTile rec={rec}></RecTile>
-                    </div>
-                  </Card>
-                )
-              )
-            )}
+            {recs?.map((rec) => (
+              <Card
+                key={rec.gameGuid}
+                className="bg-secondary rounded-lg m-1 p-2 flex w-fit"
+              >
+                <div>
+                  <RecTile rec={rec}></RecTile>
+                </div>
+              </Card>
+            ))}
           </div>
-        )}
+          {isLoading && <SpinnerWithText text={"Loading recorded games..."} />}
       </div>
     </Card>
   );
+}
+
+
+async function getMythRecsMock(pageNum: number) {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  if (pageNum >= 3) {
+    return [];
+  }
+
+  const data = {
+    gameGuid: "",
+    playerData: [
+      {
+        name: "",
+        team: 0,
+        civ: 0,
+        civList: "",
+        rating: 0,
+        rank: "",
+        powerRating: "",
+        winRatio: "",
+        civWasRandom: false,
+        color: 0,
+      },
+      {
+        name: "Shodyra",
+        team: 0,
+        civ: 1,
+        civList: "0002",
+        rating: 0,
+        rank: "",
+        powerRating: "",
+        winRatio: "",
+        civWasRandom: false,
+        color: 1,
+      },
+      {
+        name: "FitzBro",
+        team: 1,
+        civ: 5,
+        civList: "0020",
+        rating: 0,
+        rank: "",
+        powerRating: "",
+        winRatio: "",
+        civWasRandom: false,
+        color: 2,
+      },
+    ],
+    mapName: "alfheim",
+    createdAt: "2024-07-22T03:39:00.671Z",
+    uploadedBy: "FitzBro",
+    gameTitle: "Cool game",
+    downloadCount: 5,
+  };
+
+  return Array(5).fill(data).map(v => ({ ...v, gameGuid: Math.random().toString(36).slice(2, 12) }));
 }
